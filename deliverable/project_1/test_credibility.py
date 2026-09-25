@@ -76,6 +76,24 @@ check(score_band(0.9)[0] == "HIGH", "0.90 -> HIGH")
 check(score_band(0.5)[0] == "MEDIUM", "0.50 -> MEDIUM")
 check(score_band(0.1)[0] == "LOW", "0.10 -> LOW")
 
+
+print("\nCustom: preprint credibility")
+arxiv = score_url("https://arxiv.org/abs/1706.03762", use_llm=False)["score"]
+nature = score_url("https://www.nature.com/articles/example", use_llm=False)["score"]
+check(nature > arxiv, f"peer-reviewed journal ({nature:.2f}) outranks preprint ({arxiv:.2f})")
+
+
+print("\nCustom: DOI handling")
+doi_source = score_url("https://example.com/10.1234/example", use_llm=False)["score"]
+plain_source = score_url("https://example.com/article", use_llm=False)["score"]
+check(doi_source > plain_source, f"DOI URL ({doi_source:.2f}) outranks otherwise identical URL without DOI ({plain_source:.2f})")
+
+print("\nCustom: suspicious path penalty")
+suspicious = score_url("https://example.com/sponsored/article", use_llm=False)["score"]
+normal = score_url("https://example.com/article", use_llm=False)["score"]
+check(normal > suspicious, f"normal URL ({normal:.2f}) outranks sponsored URL ({suspicious:.2f})")
+
+
 print(f"\n{'=' * 60}")
 print(f"  {PASSED} passed, {FAILED} failed")
 print(f"{'=' * 60}\n")

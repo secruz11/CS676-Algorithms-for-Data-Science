@@ -44,6 +44,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import requests
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -75,19 +76,30 @@ DOMAIN_SCORES: Dict[str, float] = {
     "nature.com": 0.95,
     "science.org": 0.95,
     "nejm.org": 0.95,
+    "jamanetwork.com": 0.93,
+    "who.int": 0.88,
     "thelancet.com": 0.95,
     "pubmed.ncbi.nlm.nih.gov": 0.92,
+    
+# Adjusted scholarly source scores to better distinguish peer-reviewed
+# publications from preprint sources that have not completed peer review.
+
+   
     "arxiv.org": 0.75,          # preprint: NOT peer reviewed
-    "biorxiv.org": 0.70,        # preprint: NOT peer reviewed
+    "biorxiv.org": 0.38,        # preprint: NOT peer reviewed
+    "pnas.org": 0.90,
     # Reference
     "wikipedia.org": 0.65,
     "britannica.com": 0.80,
+    # Institutional / primary data sources
+    "imf.org": 0.83,
     # Mainstream press
     "reuters.com": 0.85,
     "apnews.com": 0.85,
     "bbc.com": 0.82,
     "nytimes.com": 0.80,
     "wsj.com": 0.80,
+    "propublica.org": 0.83,
     # User-generated / self-published
     "medium.com": 0.35,
     "substack.com": 0.35,
@@ -118,6 +130,9 @@ TLD_SCORES: Dict[str, float] = {
 }
 
 # Substrings in the URL path that hint at self-published or low-edit content.
+# Added path penalties to identify content types that may have weaker
+# editorial review, commercial influence, or other credibility concerns.
+
 PATH_PENALTIES: Dict[str, float] = {
     "/blog/": -0.10,
     "/opinion/": -0.08,
@@ -126,6 +141,8 @@ PATH_PENALTIES: Dict[str, float] = {
     "/advertorial/": -0.25,
     "/forum/": -0.12,
     "/comments/": -0.12,
+    "/miracle-": -0.15,
+    "doctors-hate": -0.12,
 }
 
 # Neutral starting point for a URL we know nothing about.
@@ -139,6 +156,103 @@ class Signal:
     name: str      # short machine-readable label, e.g. "known_domain"
     value: float   # the score or delta this signal contributed
     reason: str    # human-readable sentence for the explanation field
+
+
+def _page_credibility_signals(url: str) -> List[Signal]:
+    """
+    Fetch a webpage and look for content-level credibility signals.
+
+    This improves the baseline because the original scorer only inspects
+    the URL. If the page cannot be retrieved, the function safely returns
+    no additional signals and the original URL-based rules still work.
+    """
+    signals: List[Signal] = []
+
+    try:
+        response = requests.get(
+            url,
+            timeout=5,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        response.raise_for_status()
+
+        html = response.text.lower()
+
+        # Author information adds a small positive signal because identifiable
+        # authorship provides additional information about the source.
+        if re.search(r'\b(author|byline|article:author)\b', html):
+            signals.append(
+                Signal(
+                    "page_author",
+                    0.05,
+                    "The webpage contains author information.",
+                )
+            )
+
+        # Publication date information adds a small positive signal because it
+        # provides context about when the source was published or updated.
+        if re.search(
+            r'\b(datepublished|published_time|article:published_time|publication date)\b',
+            html,
+        ):
+            signals.append(
+                Signal(
+                    "publication_date",
+                    0.04,
+                    "The webpage contains publication-date information.",
+                )
+            )
+
+        # DOI metadata adds a positive signal because it can indicate that the
+        # webpage contains formally registered scholarly material.
+        if re.search(r'\bdoi\b|doi\.org/10\.', html):
+            signals.append(
+                Signal(
+                    "doi",
+                    0.08,
+                    "The webpage contains DOI or scholarly publication metadata.",
+                )
+            )
+
+        # Preprint status lowers the score because the scholarly work has not
+        # completed the peer-review process.
+        if re.search(r'\bpreprint\b|not peer reviewed|not peer-reviewed', html):
+            signals.append(
+                Signal(
+                    "preprint",
+                    -0.20,
+                    "The webpage identifies the work as a preprint or not peer reviewed.",
+                )
+            )
+
+        # References add a positive signal because they provide supporting
+        # sources for the information presented on the webpage.
+        if re.search(r'\b(references|bibliography|works cited|citations)\b', html):
+            signals.append(
+                Signal(
+                    "references",
+                    0.06,
+                    "The webpage contains references or citation information.",
+                )
+            )
+
+        # A corrections policy adds a positive signal because it indicates
+        # editorial accountability and transparency.
+        if re.search(r'\b(corrections policy|correction policy|corrections and clarifications)\b', html):
+            signals.append(
+                Signal(
+                    "corrections_policy",
+                    0.05,
+                    "The webpage contains evidence of a corrections policy.",
+                )
+            )
+
+    except requests.RequestException:
+        # Network failures must not break credibility scoring.
+        return []
+
+    return signals
+
 
 
 def _normalize_domain(url: str) -> str:
@@ -188,6 +302,7 @@ def rule_based_signals(url: str) -> List[Signal]:
 
     # Signal 1: exact or suffix match against our hand-written domain table.
     match = _match_known_domain(domain)
+
     if match:
         known, score = match
         signals.append(Signal("known_domain", score, f"'{known}' is a domain we recognize"))
@@ -212,8 +327,11 @@ def rule_based_signals(url: str) -> List[Signal]:
         if fragment in path:
             signals.append(Signal("path", delta, f"URL path contains '{fragment}'"))
 
-    # Signal 5: a DOI in the path implies a registered scholarly work.
-    if re.search(r"/10\.\d{4,9}/", path):
+    # Signal 5: DOI information provides evidence of scholarly publication.
+    # The DOI bonus is used only when the domain is not already recognized.
+    # This prevents a known scholarly domain from receiving duplicate credit
+    # while allowing an unfamiliar source with a DOI to gain credibility evidence.
+    if re.search(r"/10\.\d{4,9}/", path) and not match:
         signals.append(Signal("doi", 0.10, "URL contains a DOI, suggesting a registered publication"))
 
     return signals
@@ -315,7 +433,7 @@ def llm_opinion(url: str) -> Optional[Signal]:
         score = max(0.0, min(1.0, float(data["score"])))
         return Signal("llm", score, str(data["reason"]))
 
-    except Exception:
+    except Exception: 
         # Any failure falls back to rules-only scoring rather than crashing.
         return None
 
@@ -352,13 +470,30 @@ def score_url(url: str, use_llm: Optional[bool] = None) -> Dict[str, Any]:
         return {"score": 0.0, "explanation": f"'{url}' is not a valid http(s) URL."}
 
     # Layer 1 always runs.
+   
+    # Start with the original URL-based credibility signals.
     signals = rule_based_signals(url)
+
+    # Inspect page-level evidence when the domain is not already recognized.
+    # This allows unfamiliar sources to be evaluated using information from
+    # the webpage instead of relying only on the URL or top-level domain.
+    # Known domains keep their existing domain-based credibility score.
+
+    domain = _normalize_domain(url)
+    known_domain = _match_known_domain(domain)
+
+    if known_domain is None:
+        page_signals = _page_credibility_signals(url)
+        signals.extend(page_signals)
+
+    # Combine both URL-level and page-level evidence.
     rule_score = _combine_signals(signals)
     parts = [s.reason for s in signals]
 
     # Layer 2 runs only when it can. Blend if we got an opinion, otherwise the
     # rule score stands on its own.
     llm = llm_opinion(url) if use_llm is not False else None
+
     if llm is not None:
         final = RULE_WEIGHT * rule_score + LLM_WEIGHT * llm.value
         parts.append(f"model judgment {llm.value:.2f} — {llm.reason}")

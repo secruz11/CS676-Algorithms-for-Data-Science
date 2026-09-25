@@ -22,7 +22,7 @@ from credibility import score_band, score_url
 load_dotenv()
 
 # Claude Opus 5 is the most capable model. Swap to "claude-sonnet-5" or
-# "claude-haiku-4-5" if you want to reduce cost while developing — note which
+# "claude-haiku-4a-5" if you want to reduce cost while developing — note which
 # one your submitted numbers used.
 CHAT_MODEL = "claude-opus-5"
 MAX_TOKENS = 16000
@@ -193,8 +193,58 @@ def render_source(index: int, title: str, url: str, snippet: str = "") -> None:
 # -----------------------------------------------------------------------------
 # UI
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="CS676 — Credibility Chatbot", page_icon="🔍")
-st.title("🔍 Credibility-Scored Research Assistant")
+st.set_page_config(
+    page_title="Credibility Scoring Project",
+    page_icon="🔎",
+    layout="wide"
+)
+
+st.markdown("""
+<style>
+    .block-container {
+        max-width: 1100px;
+        padding-top: 3rem;
+        padding-bottom: 3rem;
+    }
+
+    .hero {
+        padding: 1.5rem 0 1rem 0;
+    }
+
+    .hero-title {
+        font-size: 2.6rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.05rem;
+        opacity: 0.7;
+        max-width: 700px;
+        line-height: 1.6;
+    }
+
+    .welcome-card {
+        border: 1px solid rgba(128,128,128,0.25);
+        border-radius: 14px;
+        padding: 1.5rem;
+        margin-top: 2rem;
+    }
+
+    .welcome-card h3 {
+        margin-top: 0;
+    }
+</style>
+
+<div class="hero">
+    <div class="hero-title">🔎 Credibility Scoring Project</div>
+    <div class="hero-subtitle">
+        A credibility-scored research assistant that helps you research a question
+        while evaluating the reliability of the sources behind the answer.
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 
 with st.sidebar:
     st.subheader("Session")
@@ -212,13 +262,45 @@ with st.sidebar:
     st.caption(("✅" if TRACING_ENABLED else "⬜") + " Langfuse tracing (optional)")
 
     st.divider()
-    st.caption("Score any URL directly:")
-    probe = st.text_input("URL", placeholder="https://arxiv.org/abs/1706.03762")
+
+    st.markdown("### 🔗 Quick Credibility Check")
+    st.caption("Paste any URL to evaluate its credibility.")
+
+    probe = st.text_input(
+        "Source URL",
+        placeholder="https://arxiv.org/abs/1706.03762"
+    )
+
     if probe:
         probe_result = score_url(probe)
         probe_label, probe_colour = score_band(probe_result["score"])
-        st.markdown(f":{probe_colour}[**{probe_result['score']:.2f} — {probe_label}**]")
-        st.caption(probe_result["explanation"])
+
+        st.markdown(
+            f"""
+            <div style="
+                border: 1px solid rgba(128,128,128,0.25);
+                border-radius: 12px;
+                padding: 16px;
+                margin-top: 10px;
+                margin-bottom: 10px;
+            ">
+                <div style="font-size: 12px; opacity: 0.65;">
+                    CREDIBILITY SCORE
+                </div>
+                <div style="font-size: 28px; font-weight: 700;">
+                    {probe_result['score']:.2f}
+                </div>
+                <div style="font-size: 16px; font-weight: 600;">
+                    {probe_label}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        with st.expander("Why this score?"):
+            st.write(probe_result["explanation"])
+
 
 if not os.getenv("ANTHROPIC_API_KEY"):
     st.warning("No ANTHROPIC_API_KEY found. Copy `.env.example` to `.env` and add your key. "
@@ -226,6 +308,22 @@ if not os.getenv("ANTHROPIC_API_KEY"):
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if not st.session_state.messages:
+    st.markdown("""
+    <div class="welcome-card">
+        <h3>Research with source credibility in view</h3>
+        <p>
+            Ask a research question below. The Credibility Scoring Project will answer your question,
+            identify the sources used, and assign each source a credibility score.
+        </p>
+        <p>
+            <strong>HIGH</strong> — stronger credibility signals &nbsp;&nbsp;
+            <strong>MEDIUM</strong> — mixed credibility signals &nbsp;&nbsp;
+            <strong>LOW</strong> — weaker credibility signals
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Replay the conversation so far.
 for message in st.session_state.messages:

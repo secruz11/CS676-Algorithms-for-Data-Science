@@ -18,6 +18,9 @@ with sources from your own domain is encouraged and is worth credit.
 from __future__ import annotations
 
 import argparse
+from dotenv import load_dotenv
+load_dotenv()
+
 from typing import Dict, List, Tuple
 
 from credibility import score_band, score_url
