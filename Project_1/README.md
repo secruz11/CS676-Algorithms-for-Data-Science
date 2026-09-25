@@ -17,6 +17,9 @@ https://credibility-scoring-project.streamlit.app
 
 ## Project Files
 
+## Project Files
+
+- `CS676_Project_1.mp4` — project demonstration video
 - `credibility.py` — credibility-scoring algorithm
 - `main.py` — Streamlit application
 - `evaluate.py` — quantitative evaluation
