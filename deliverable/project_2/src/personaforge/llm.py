@@ -91,6 +91,22 @@ class ClaudeLLM:
             return "[declined to respond]"
 
         return "".join(block.text for block in response.content if block.type == "text").strip()
+    
+    def create_message(
+        self,
+        system: str,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        max_tokens: int = 2048,
+    ) -> Any:
+        """Send a Claude request with tools and preserve the full response."""
+        return self._get_client().messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            tools=tools,
+        )
 
 
 @dataclass

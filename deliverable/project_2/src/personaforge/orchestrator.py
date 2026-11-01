@@ -35,6 +35,56 @@ from .persona import (
     save_persona,
 )
 
+PERSONAFORGE_TOOLS = [
+    {
+        "name": "create_persona",
+        "description": "Create and save a fictional persona based on a description.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "The role, personality, and background of the persona."
+                }
+            },
+            "required": ["description"]
+        }
+    },
+    {
+        "name": "list_personas",
+        "description": "List all previously created personas.",
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "start_conversation",
+        "description": "Start a conversation between two or more existing personas.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "participants": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Names of the personas participating."
+                },
+                "topic": {
+                    "type": "string",
+                    "description": "The topic they should discuss."
+                },
+                "turns": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 30,
+                    "description": "Number of conversation turns."
+                }
+            },
+            "required": ["participants", "topic", "turns"]
+        }
+    }
+]
+
 _STAGE_MANAGER_SYSTEM = """You are the stage manager of a persona simulation workshop.
 
 The user builds fictional characters and has them talk to each other. You help them
@@ -61,6 +111,22 @@ class Orchestrator:
         self.llm = llm
         self.persona_dir = Path(persona_dir)
         self.history: List[dict] = []
+
+
+    def _trim_history(self, messages: List[dict], max_messages: int = 20) -> List[dict]:
+        """Keep recent history without separating tool calls from results."""
+        if len(messages) <= max_messages:
+            return messages
+
+        start = len(messages) - max_messages
+
+        while start < len(messages):
+            message = messages[start]
+            if message["role"] == "user" and isinstance(message["content"], str):
+                break
+            start += 1
+
+        return messages[start:]
 
     # -- intents ------------------------------------------------------------
 
@@ -103,7 +169,20 @@ class Orchestrator:
                     return Result(reply=f"I couldn't find a persona matching '{name}'.")
                 specs.append(found)
         else:
-            specs = list_personas(self.persona_dir)[:2]
+            available = list_personas(self.persona_dir)
+
+            if len(available) < 2:
+                return Result(
+                    reply="I need at least two personas before they can talk. Create another one first."
+                )
+
+            if len(available) > 2:
+                names = ", ".join(spec.name for spec in available)
+                return Result(
+                    reply=f"Which personas should participate? Available personas: {names}"
+                )
+
+            specs = available
 
         if len(specs) < 2:
             return Result(reply="I need at least two personas before they can talk. Create another one first.")
@@ -119,15 +198,155 @@ class Orchestrator:
             events=[f"wrote {path}"],
             conversation=conversation,
         )
+    
+    def _execute_tool(
+        self,
+        name: str,
+        arguments: dict,
+        on_turn: Optional[Callable[[Turn], None]] = None,
+        on_start: Optional[Callable[[str], None]] = None,
+    ) -> Result:
+        """Execute a tool requested by Claude."""
+        if name == "create_persona":
+            description = arguments.get("description", "")
+            if not isinstance(description, str) or not description.strip():
+                return Result(reply="What kind of persona would you like to create?")
+            return self._create_persona(description)
+
+        if name == "list_personas":
+            return self._list_personas()
+
+        if name == "start_conversation":
+            participants = arguments.get("participants")
+            topic = arguments.get("topic")
+            turns = arguments.get("turns")
+
+            if not isinstance(participants, list) or not all(
+                isinstance(p, str) and p.strip() for p in participants
+            ) or len(participants) < 2:
+                return Result(reply="Please specify at least two participants.")
+
+            if not isinstance(topic, str) or not topic.strip():
+                return Result(reply="What should the personas discuss?")
+
+            if type(turns) is not int or not 2 <= turns <= 30:
+                return Result(reply="Please choose between 2 and 30 turns.")
+
+            return self._converse(
+                topic=topic,
+                who=participants,
+                turns=turns,
+                on_turn=on_turn,
+                on_start=on_start,
+            )
+
+        return Result(reply=f"Unknown tool: {name}")
 
     def _chat(self, text: str) -> Result:
         """Nothing matched, so just talk to the user."""
         self.history.append({"role": "user", "content": text})
         reply = self.llm.complete(_STAGE_MANAGER_SYSTEM, self.history, max_tokens=512)
         self.history.append({"role": "assistant", "content": reply})
+        self.history = self._trim_history(self.history)
         return Result(reply=reply)
 
     # -- routing ------------------------------------------------------------
+    def _handle_with_tools(
+        self,
+        text: str,
+        on_turn: Optional[Callable[[Turn], None]] = None,
+        on_start: Optional[Callable[[str], None]] = None,
+    ) -> Result:
+        """Route a request using Claude's tool-calling API."""
+        messages = list(self.history)
+        messages.append({"role": "user", "content": text})
+
+        try:
+            response = self.llm.create_message(
+                system=_STAGE_MANAGER_SYSTEM,
+                messages=messages,
+                tools=PERSONAFORGE_TOOLS,
+            )
+        except Exception as exc:
+            return Result(
+                reply=f"Unable to contact Claude: {type(exc).__name__}. Please try again."
+            )
+
+        
+
+        last_conversation = None
+        collected_events = []
+
+        for _ in range(10):
+            if response.stop_reason != "tool_use":
+                reply = "\n".join(
+                    block.text
+                    for block in response.content
+                    if block.type == "text"
+                )
+
+                messages.append({
+                    "role": "assistant",
+                    "content": reply,
+                })
+
+                self.history = self._trim_history(messages)
+
+                return Result(
+                    reply=reply,
+                    events=collected_events,
+                    conversation=last_conversation,
+                )
+
+            messages.append({
+                "role": "assistant",
+                "content": response.content,
+            })
+
+            tool_results = []
+
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+
+                result = self._execute_tool(
+                    block.name,
+                    block.input,
+                    on_turn=on_turn,
+                    on_start=on_start,
+                )
+
+                if result.conversation is not None:
+                    last_conversation = result.conversation
+
+                collected_events.extend(result.events)
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": result.reply,
+                })
+
+            messages.append({
+                "role": "user",
+                "content": tool_results,
+            })
+
+            try:
+                response = self.llm.create_message(
+                    system=_STAGE_MANAGER_SYSTEM,
+                    messages=messages,
+                    tools=PERSONAFORGE_TOOLS,
+                )
+            except Exception as exc:
+                return Result(
+                    reply=f"Unable to contact Claude: {type(exc).__name__}. Please try again.",
+                    events=collected_events,
+                    conversation=last_conversation,
+                )
+
+        return Result(reply="I reached the maximum number of tool actions.")
+
 
     def handle(
         self,
@@ -135,6 +354,13 @@ class Orchestrator:
         on_turn: Optional[Callable[[Turn], None]] = None,
         on_start: Optional[Callable[[str], None]] = None,
     ) -> Result:
+
+        if callable(getattr(self.llm, "create_message", None)):
+            return self._handle_with_tools(
+                text,
+                on_turn=on_turn,
+                on_start=on_start,
+            )
         """
         Work out what the user meant and do it.
 

@@ -385,3 +385,33 @@ you are working on anything that isn't prompt quality.
 
 **Personas from an old run keep showing up**
 They are files. `rm temp/*.md` (macOS/Linux) or `del temp\*.md` (Windows).
+
+
+## My Implementation — Claude Tool Calling
+
+This version of PersonaForge extends the original project by implementing Claude's native tool-calling API for persona management and conversations.
+
+### Features Implemented
+
+- **Claude tool calling:** Replaced regex-based intent routing with Claude's ability to select and execute tools.
+- **Persona management:** Claude can create personas and list existing personas through structured tool calls.
+- **Conversation orchestration:** Claude can initiate conversations using specified participants, topics, and turn counts.
+- **Clarification:** Claude can request additional information when a user's instructions are incomplete.
+- **Conversation history:** Recent messages are retained to provide context across interactions, with history trimming to limit growth.
+- **Tool-result handling:** Tool responses are returned to Claude so it can continue processing the user's request.
+- **Conversation preservation:** Completed conversations and associated events are retained for the application.
+- **Offline compatibility:** The existing offline functionality remains available.
+
+### Testing
+
+The project includes automated tests covering Claude tool calls, multiple tool executions, clarification requests, conversation history, persona creation, conversation settings, and preservation of conversation results.
+
+Run the complete test suite with:
+
+`uv run pytest -q`
+
+**Latest local test result:** 48 tests passed.
+
+### Current Limitations
+
+The Claude API integration has been tested using simulated responses, but a live API test is still needed to verify end-to-end behavior. Additional improvements to agent memory, turn-taking, observer functionality, and deployment remain separate from this implementation.
