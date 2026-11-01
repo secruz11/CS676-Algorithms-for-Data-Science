@@ -414,4 +414,4 @@ Run the complete test suite with:
 
 ### Current Limitations
 
-The Claude API integration has been tested using simulated responses, but a live API test is still needed to verify end-to-end behavior. Additional improvements to agent memory, turn-taking, observer functionality, and deployment remain separate from this implementation.
+The Claude tool-calling integration was validated through automated tests and a successful live API demonstration. In the live demonstration, Claude identified three existing personas from a natural-language request and generated a four-turn conversation between an Alzheimer's specialist and a family caregiver. The conversation was saved to `temp/conversation.md`, with a separate copy preserved as `temp/alzheimers_live_transcript.md`. All 50 automated tests passed. Remaining limitations include the lack of a live deployment and the need for further evaluation of longer conversations and API reliability. Additional improvements to agent memory, turn-taking, observer functionality, and deployment remain separate from this implementation.
