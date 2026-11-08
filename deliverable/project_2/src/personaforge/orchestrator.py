@@ -309,13 +309,17 @@ class Orchestrator:
                 if block.type != "tool_use":
                     continue
 
-                result = self._execute_tool(
-                    block.name,
-                    block.input,
-                    on_turn=on_turn,
-                    on_start=on_start,
-                )
-
+                try:
+                    result = self._execute_tool(
+                        block.name,
+                        block.input,
+                        on_turn=on_turn,
+                        on_start=on_start,
+                    )
+                except Exception as exc:
+                    result = Result(
+                        reply=f"Tool execution failed: {type(exc).__name__}. Please try again."
+                    )
                 if result.conversation is not None:
                     last_conversation = result.conversation
 

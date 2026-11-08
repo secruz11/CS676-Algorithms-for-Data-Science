@@ -484,3 +484,48 @@ def test_claude_api_failure_after_tool_preserves_results(monkeypatch):
     assert "Unable to contact Claude" in result.reply
     assert result.conversation is conversation
     assert result.events == ["conversation saved"]
+
+def test_claude_tool_execution_failure_is_handled(tmp_path, monkeypatch):
+    class ToolCallingClaude:
+        def __init__(self):
+            self.calls = 0
+
+        def create_message(self, **kwargs):
+            self.calls += 1
+
+            if self.calls == 1:
+                return SimpleNamespace(
+                    stop_reason="tool_use",
+                    content=[
+                        SimpleNamespace(
+                            type="tool_use",
+                            id="tool_failure_1",
+                            name="list_personas",
+                            input={},
+                        )
+                    ],
+                )
+
+            tool_result = kwargs["messages"][-1]["content"][0]
+            assert tool_result["tool_use_id"] == "tool_failure_1"
+            assert "Tool execution failed: RuntimeError" in tool_result["content"]
+
+            return SimpleNamespace(
+                stop_reason="end_turn",
+                content=[
+                    SimpleNamespace(
+                        type="text",
+                        text="Sorry, I couldn't complete that action.",
+                    )
+                ],
+            )
+
+    def failing_tool(self, name, arguments, on_turn=None, on_start=None):
+        raise RuntimeError("Simulated tool failure")
+
+    monkeypatch.setattr(Orchestrator, "_execute_tool", failing_tool)
+
+    orchestrator = Orchestrator(ToolCallingClaude(), persona_dir=tmp_path)
+    result = orchestrator.handle("List my personas")
+
+    assert result.reply == "Sorry, I couldn't complete that action."
