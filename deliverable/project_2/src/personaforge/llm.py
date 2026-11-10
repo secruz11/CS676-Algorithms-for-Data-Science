@@ -180,7 +180,8 @@ class DemoLLM:
             description = request.replace("Write a persona for:", "").strip()
             words = [w for w in description.split() if w.isalpha()]
             role = words[0].lower() if words else "person"
-            return _DEMO_PERSONA.format(name=description[:40].title() or "Demo Persona", role=role)
+            short_name = description[:40].rsplit(" ", 1)[0] if len(description) > 40 else description
+            return _DEMO_PERSONA.format(name=short_name.title() or "Demo Persona", role=role)
 
         if "stage manager" in system.lower():
             return "Offline mode — I'm a stub. Try: create a persona doctor"

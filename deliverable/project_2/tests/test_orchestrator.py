@@ -268,7 +268,7 @@ def test_conversation_tool_uses_requested_settings(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_converse(self, topic, who=None, turns=6, on_turn=None, on_start=None):
+    def fake_converse(self, topic, who=None, turns=6, on_turn=None, on_start=None, shared_context=None):
         captured.update(topic=topic, who=who, turns=turns)
         return module.Result(reply="Conversation ran.")
 
@@ -529,3 +529,37 @@ def test_claude_tool_execution_failure_is_handled(tmp_path, monkeypatch):
     result = orchestrator.handle("List my personas")
 
     assert result.reply == "Sorry, I couldn't complete that action."
+
+def test_conversation_tool_forwards_shared_context(tmp_path, monkeypatch):
+    from personaforge import Orchestrator
+    from personaforge import orchestrator as module
+    from personaforge.llm import DemoLLM
+
+    captured = {}
+
+    def fake_converse(self, **kwargs):
+        captured.update(kwargs)
+        return module.Result(reply="Conversation ran.")
+
+    monkeypatch.setattr(module.Orchestrator, "_converse", fake_converse)
+
+    orch = Orchestrator(llm=DemoLLM(), persona_dir=tmp_path)
+
+    orch._execute_tool(
+        "start_conversation",
+        {
+            "participants": ["Elena Rivera", "Maya Thompson"],
+            "topic": "caregiver burnout",
+            "turns": 8,
+            "shared_context": (
+                "Maya's mother is Delphine, a 74-year-old woman "
+                "with Alzheimer's disease."
+            ),
+        },
+    )
+
+    assert captured["shared_context"] == (
+        "Maya's mother is Delphine, a 74-year-old woman "
+        "with Alzheimer's disease."
+    )
+    assert captured["turns"] == 8

@@ -34,7 +34,15 @@ class Conversation:
     def transcript(self) -> str:
         """Render as plain text, suitable for saving or printing."""
         header = f"# Conversation: {self.topic}\n\nParticipants: {', '.join(self.participants)}\n\n"
-        return header + "\n\n".join(f"**{t.speaker}:** {t.text}" for t in self.turns)
+        disclaimer = (
+            "> **Simulation notice:** This conversation is AI-generated fiction. "
+            "Character statements may contain inaccuracies and should not be "
+            "treated as verified professional, medical, legal, or safety advice.\n\n"
+        )
+
+        return header + disclaimer + "\n\n".join(
+            f"**{t.speaker}:** {t.text}" for t in self.turns
+        )
 
 
 def run_conversation(
@@ -42,6 +50,7 @@ def run_conversation(
     topic: str,
     turns: int = 6,
     on_turn: Optional[Callable[[Turn], None]] = None,
+    shared_context: Optional[str] = None,
 ) -> Conversation:
     """
     Run a round-robin conversation between the given agents.
@@ -59,11 +68,68 @@ def run_conversation(
 
     # The topic is injected as a scene-setting turn from a narrator. Every agent
     # sees it as context but nobody has to answer it directly.
-    history: List[Turn] = [Turn(speaker="Scene", text=topic)]
+    history: List[Turn] = [
+        Turn(
+            speaker="Scene",
+            text=(
+                f"Conversation topic: {topic}\n\n"
+                "Conversation guidance: Develop a natural, realistic discussion "
+                "that meaningfully addresses all the themes requested in the topic. "
+                "Do not spend the entire conversation on just one theme. "
+                "As the discussion progresses, introduce themes that have not yet "
+                "been explored, while responding naturally to the other speaker. "
+                "Avoid repeating points already covered."
+            ),
+        )
+    ]
+    if shared_context and shared_context.strip():
+        history.append(
+            Turn(
+                speaker="Scene",
+                text=(
+                    "Shared background known to all participants:\n"
+                    f"{shared_context.strip()}\n"
+                    "Use these facts consistently. Do not assume "
+                    "additional personal details that are not established."
+                ),
+            )
+        )
 
     for i in range(turns):
         speaker = agents[i % len(agents)]
-        text = speaker.respond(history)
+
+        remaining = turns - i - 1
+
+        if i == 0:
+            progress_note = (
+                "Begin naturally by establishing the situation and "
+                "introducing the main concerns."
+            )
+        elif remaining >= 3:
+            progress_note = (
+                f"There are {remaining} turns after this one. "
+                "Develop the discussion and bring up requested themes "
+                "that have not yet been explored. Do not leave important "
+                "topics until the final turn."
+            )
+        elif remaining > 0:
+            progress_note = (
+                f"There are only {remaining} turns after this one. "
+                "Address unresolved themes now, respond to important "
+                "concerns, and begin moving toward a resolution."
+            )
+        else:
+            progress_note = (
+                "This is the final turn. Respond to the previous speaker "
+                "and bring the conversation to a natural close."
+            )
+
+        guided_history = history + [
+            Turn(speaker="Scene", text=progress_note)
+        ]
+
+        text = speaker.respond(guided_history)
+
         turn = Turn(speaker=speaker.name, text=text)
 
         history.append(turn)

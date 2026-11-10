@@ -78,7 +78,15 @@ PERSONAFORGE_TOOLS = [
                     "minimum": 2,
                     "maximum": 30,
                     "description": "Number of conversation turns."
-                }
+                },
+                "shared_context": {
+                    "type": "string",
+                    "description": (
+                        "Optional background facts explicitly supplied by the user "
+                        "that all participants should know before speaking. "
+                        "Do not invent facts or copy private persona details."
+                    )
+                }            
             },
             "required": ["participants", "topic", "turns"]
         }
@@ -158,6 +166,7 @@ class Orchestrator:
         turns: int = 6,
         on_turn: Optional[Callable[[Turn], None]] = None,
         on_start: Optional[Callable[[str], None]] = None,
+        shared_context: Optional[str] = None,
     ) -> Result:
         """Wake up two personas and let them talk."""
         specs: List[PersonaSpec] = []
@@ -190,7 +199,13 @@ class Orchestrator:
         agents = [agent_from_spec(s, self.llm) for s in specs]
         if on_start is not None:
             on_start(topic)
-        conversation = run_conversation(agents, topic=topic, turns=turns, on_turn=on_turn)
+        conversation = run_conversation(
+            agents,
+            topic=topic,
+            turns=turns,
+            on_turn=on_turn,
+            shared_context=shared_context,
+        )
         path = save_transcript(conversation, self.persona_dir, filename="conversation.md")
 
         return Result(
@@ -232,12 +247,18 @@ class Orchestrator:
             if type(turns) is not int or not 2 <= turns <= 30:
                 return Result(reply="Please choose between 2 and 30 turns.")
 
+            shared_context = arguments.get("shared_context")
+
+            if shared_context is not None and not isinstance(shared_context, str):
+                return Result(reply="Shared context must be text.")
+
             return self._converse(
                 topic=topic,
                 who=participants,
                 turns=turns,
                 on_turn=on_turn,
                 on_start=on_start,
+                shared_context=shared_context,
             )
 
         return Result(reply=f"Unknown tool: {name}")
