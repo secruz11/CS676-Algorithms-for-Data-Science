@@ -131,7 +131,19 @@ def list_personas(directory: Path = DEFAULT_PERSONA_DIR) -> List[PersonaSpec]:
     directory = Path(directory)
     if not directory.exists():
         return []
-    return [load_persona(p) for p in sorted(directory.glob("*.md"))]
+    personas = []
+    for p in sorted(directory.glob("*.md")):
+        content = p.read_text(encoding="utf-8")
+        if not content.startswith("---"):
+            continue
+        frontmatter = content.split("---", 2)[1]
+        if not all(
+            any(line.startswith(f"{key}:") for line in frontmatter.splitlines())
+            for key in ("name", "role", "summary")
+        ):
+            continue
+        personas.append(load_persona(p))
+    return personas
 
 
 def find_persona(name: str, directory: Path = DEFAULT_PERSONA_DIR) -> Optional[PersonaSpec]:
@@ -208,7 +220,7 @@ def generate_persona(description: str, llm: LLM) -> PersonaSpec:
     # If the model ignored the frontmatter format we still want something usable,
     # so fall back to the raw description rather than failing the whole command.
     if spec.name == "Unnamed":
-        spec.name = description[:40].strip().title() or "Unnamed"
+        spec.name = description.strip().rstrip(".!?").title() or "Unnamed"
         spec.summary = description.strip()
 
     return spec

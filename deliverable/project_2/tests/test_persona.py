@@ -104,3 +104,31 @@ def test_generate_persona_survives_unstructured_output():
 
     assert spec.name != "Unnamed"
     assert spec.summary == "a nurse"
+
+
+def test_list_personas_ignores_conversation_transcripts(tmp_path):
+    """Saved conversation transcripts must not appear as personas."""
+    save_persona(
+        PersonaSpec(name="Maya Thompson", role="caregiver", summary="Family caregiver", body="Test"),
+        tmp_path,
+    )
+    (tmp_path / "conversation.md").write_text(
+        "# Conversation\n\nDoctor: Hello.\nCaregiver: Hi.",
+        encoding="utf-8",
+    )
+
+    personas = list_personas(tmp_path)
+
+    assert len(personas) == 1
+    assert personas[0].name == "Maya Thompson"
+
+
+def test_fallback_persona_name_is_not_truncated():
+    """A long description should retain its complete name."""
+    description = "a family caregiver whose mother has Alzheimer's disease"
+    llm = ScriptedLLM(replies=["Unstructured model response"])
+
+    spec = generate_persona(description, llm)
+
+    assert spec.name == description.title()
+    assert spec.summary == description
