@@ -1,4 +1,4 @@
-
+cat > Project_2/README.md <<'EOF'
 # PersonaForge — CS676 Project 2
 
 **Course:** CS676 Algorithms for Data Science  
@@ -29,7 +29,7 @@ The updated orchestrator allows the language model to select appropriate tools b
 
 Key implementation files include:
 
-- `src/personaforge/orchestrator.py` — Tool definitions and orchestration logic.
+- `srcf/personaforge/orchestrator.py` — Tool definitions and orchestration logic.
 - `src/personaforge/llm.py` — Language model integration.
 - `src/personaforge/conversation.py` — Conversation functionality.
 - `src/personaforge/persona.py` — Persona management.
@@ -45,3 +45,43 @@ Install dependencies:
 
 ```bash
 uv sync
+
+```
+
+## Running the Application
+
+Start PersonaForge with:
+
+```bash
+uv run python main.py
+```
+
+The application accepts natural-language instructions for creating and managing personas and generating conversations between them.
+
+## Testing
+
+Run the automated tests with:
+
+```bash
+uv run pytest
+```
+
+During development, the completed test suite passed 60 tests.
+
+## Project Deliverables
+
+- `TECHNICAL_REPORT.md` — Implementation details, testing results, limitations, and evaluation.
+- `CONVERSATION_TRANSCRIPT.md` — Final validated conversation between Elena Rivera and Maya Thompson.
+- `Project2.mp4` — Recorded presentation and demonstration.
+- `src/personaforge/` — Application source code.
+- `tests/` — Automated tests.
+
+## Use of ChatGPT
+
+ChatGPT (OpenAI) was used as a development support tool throughout this project. It assisted with understanding assignment requirements, debugging Python code, troubleshooting Git and Terminal issues, reviewing implementation decisions, refining documentation, and preparing the presentation.
+
+The project was tested and reviewed during development, and the technical report documents the implementation and evaluation.
+
+## Acknowledgments
+
+This project builds upon the PersonaForge starter code and assignment framework provided for CS676 Algorithms for Data Science at Pace University.
