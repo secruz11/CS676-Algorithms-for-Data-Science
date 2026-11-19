@@ -1,4 +1,4 @@
-cat > Project_2/README.md <<'EOF'
+
 # PersonaForge — CS676 Project 2
 
 **Course:** CS676 Algorithms for Data Science  
