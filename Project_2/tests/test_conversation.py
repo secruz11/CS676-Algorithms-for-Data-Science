@@ -161,3 +161,94 @@ def test_unmatched_input_falls_through_to_chat(tmp_path):
 
     assert result.reply == "Tell me who you want to build."
     assert result.conversation is None
+
+def test_final_turn_receives_closing_instruction():
+    a, b, llm = two_agents(replies=["First response", "Final response"])
+
+    convo = run_conversation([a, b], topic="caregiver burnout", turns=2)
+
+    assert len(convo.turns) == 2
+
+    first_messages = llm.calls[0]["messages"]
+    final_messages = llm.calls[1]["messages"]
+
+    assert not any(
+        "This is the final turn" in m["content"]
+        for m in first_messages
+    )
+
+    assert any(
+        "This is the final turn" in m["content"]
+        for m in final_messages
+    )
+
+    assert convo.turns[-1].text == "Final response"
+
+def test_conversation_includes_topic_coverage_guidance():
+    a, b, llm = two_agents()
+
+    run_conversation(
+        [a, b],
+        topic="caregiver burnout, nighttime confusion, and outside help",
+        turns=2,
+    )
+
+    for call in llm.calls:
+        messages = call["messages"]
+        content = " ".join(m["content"] for m in messages)
+
+        assert "caregiver burnout" in content
+        assert "nighttime confusion" in content
+        assert "outside help" in content
+        assert "meaningfully addresses all the themes" in content
+
+def test_conversation_guidance_changes_with_progress():
+    a, b, llm = two_agents()
+
+    run_conversation([a, b], topic="three important themes", turns=6)
+
+    messages = [
+        " ".join(m["content"] for m in call["messages"])
+        for call in llm.calls
+    ]
+
+    assert "Begin naturally" in messages[0]
+    assert "Do not leave important" in messages[1]
+    assert "Address unresolved themes now" in messages[3]
+    assert "This is the final turn" in messages[5]
+
+    assert "This is the final turn" not in messages[0]
+    assert "This is the final turn" not in messages[4]
+
+def test_transcript_includes_simulation_disclaimer():
+    a, b, _ = two_agents(replies=["Hello", "Hi"])
+
+    convo = run_conversation([a, b], topic="healthcare", turns=2)
+    transcript = convo.transcript()
+
+    assert "Simulation notice" in transcript
+    assert "AI-generated fiction" in transcript
+    assert "medical, legal, or safety advice" in transcript
+    assert "Alice" in transcript
+    assert "Bob" in transcript
+
+
+def test_shared_context_reaches_all_agents():
+    a, b, llm = two_agents()
+
+    run_conversation(
+        [a, b],
+        topic="caregiver burnout",
+        turns=2,
+        shared_context="The patient's name is Delphine.",
+    )
+
+    assert len(llm.calls) == 2
+
+    for call in llm.calls:
+        content = " ".join(
+            message["content"] for message in call["messages"]
+        )
+        assert "The patient's name is Delphine." in content
+        assert "Shared background known to all participants" in content
+

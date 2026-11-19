@@ -74,3 +74,23 @@ def test_own_lines_become_assistant_turns():
 def test_agent_name_comes_from_the_spec():
     agent, _ = make_agent()
     assert agent.name == "Dr. Reyes"
+
+def test_agent_receives_factual_consistency_rules():
+    from personaforge import PersonaSpec, agent_from_spec
+    from personaforge.llm import ScriptedLLM
+
+    spec = PersonaSpec(
+        name="Maya",
+        role="caregiver",
+        summary="Cares for her mother",
+        body="Maya's mother is named Delphine.",
+    )
+
+    agent = agent_from_spec(spec, ScriptedLLM())
+    prompt = agent.system_prompt()
+
+    assert "Delphine" in prompt
+    assert "Treat the character description" in prompt
+    assert "Do not invent specific personal details" in prompt
+    assert "If another character corrects" in prompt
+

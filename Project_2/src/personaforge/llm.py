@@ -91,6 +91,22 @@ class ClaudeLLM:
             return "[declined to respond]"
 
         return "".join(block.text for block in response.content if block.type == "text").strip()
+    
+    def create_message(
+        self,
+        system: str,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        max_tokens: int = 2048,
+    ) -> Any:
+        """Send a Claude request with tools and preserve the full response."""
+        return self._get_client().messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            tools=tools,
+        )
 
 
 @dataclass
@@ -164,7 +180,8 @@ class DemoLLM:
             description = request.replace("Write a persona for:", "").strip()
             words = [w for w in description.split() if w.isalpha()]
             role = words[0].lower() if words else "person"
-            return _DEMO_PERSONA.format(name=description[:40].title() or "Demo Persona", role=role)
+            short_name = description[:40].rsplit(" ", 1)[0] if len(description) > 40 else description
+            return _DEMO_PERSONA.format(name=short_name.title() or "Demo Persona", role=role)
 
         if "stage manager" in system.lower():
             return "Offline mode — I'm a stub. Try: create a persona doctor"
