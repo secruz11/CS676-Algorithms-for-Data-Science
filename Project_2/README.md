@@ -28,7 +28,7 @@ The updated orchestrator allows the language model to select appropriate tools b
 
 Key implementation files include:
 
-- `srcf/personaforge/orchestrator.py` — Tool definitions and orchestration logic.
+- `src/personaforge/orchestrator.py` — Tool definitions and orchestration logic.
 - `src/personaforge/llm.py` — Language model integration.
 - `src/personaforge/conversation.py` — Conversation functionality.
 - `src/personaforge/persona.py` — Persona management.
